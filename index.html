@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto Compare – Real Data</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+  background:#050814;
+  color:#fff;
+  font-family:Arial, sans-serif;
+  padding:16px;
+}
+h1{
+  text-align:center;
+  color:#2ecc71;
+}
+.container{
+  max-width:600px;
+  margin:auto;
+}
+select,input,button{
+  width:100%;
+  padding:12px;
+  margin:8px 0;
+  border-radius:12px;
+  border:none;
+  font-size:16px;
+}
+button{
+  background:#2ecc71;
+  font-weight:bold;
+  cursor:pointer;
+}
+canvas{
+  background:#0e1224;
+  border-radius:12px;
+  padding:8px;
+  margin-top:10px;
+}
+.card{
+  background:#0e1224;
+  padding:14px;
+  border-radius:14px;
+  margin-top:12px;
+  text-align:center;
+}
+.buy{color:#2ecc71;font-weight:bold;}
+.hold{color:#f1c40f;font-weight:bold;}
+.sell{color:#e74c3c;font-weight:bold;}
+.error{color:#ff4d4d;text-align:center;}
+</style>
+</head>
+
+<body>
+
+<h1>🚀 Crypto Compare</h1>
+
+<div class="container">
+
+<select id="coin">
+  <option value="bitcoin">Bitcoin (BTC)</option>
+  <option value="ethereum">Ethereum (ETH)</option>
+</select>
+
+<label>📅 Data inicial</label>
+<input type="date" id="start">
+
+<label>📅 Data final</label>
+<input type="date" id="end">
+
+<button onclick="analisar()">📊 Analisar Mercado</button>
+
+<p class="error" id="error"></p>
+
+<canvas id="chartHist"></canvas>
+<canvas id="chartNow"></canvas>
+
+<div class="card" id="resultado"></div>
+
+</div>
+
+<script>
+let g1=null, g2=null;
+
+function toTimestamp(date){
+  return Math.floor(new Date(date).getTime()/1000);
+}
+
+async function getRange(coin, from, to){
+  const url=`https://api.coingecko.com/api/v3/coins/${coin}/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
+  const r=await fetch(url);
+  if(!r.ok) throw "Erro ao buscar dados da API";
+  return r.json();
+}
+
+async function analisar(){
+  const coin=document.getElementById("coin").value;
+  const start=document.getElementById("start").value;
+  const end=document.getElementById("end").value;
+  const err=document.getElementById("error");
+  const res=document.getElementById("resultado");
+
+  err.innerText="";
+  res.innerHTML="";
+
+  if(!start || !end){
+    err.innerText="Selecione as duas datas 📅";
+    return;
+  }
+
+  if(new Date(end) > new Date()){
+    err.innerText="Data final não pode ser futura";
+    return;
+  }
+
+  try{
+    const hist = await getRange(coin, toTimestamp(start), toTimestamp(end));
+
+    const nowFrom = Math.floor(Date.now()/1000) - 60*60*24*90;
+    const nowTo = Math.floor(Date.now()/1000);
+    const atual = await getRange(coin, nowFrom, nowTo);
+
+    if(hist.prices.length === 0) throw "Sem dados históricos";
+
+    const hPrices = hist.prices.map(p=>p[1]);
+    const nPrices = atual.prices.map(p=>p[1]);
+
+    const topo = Math.max(...hPrices);
+    const precoAtual = nPrices[nPrices.length-1];
+    const distancia = ((topo - precoAtual) / topo) * 100;
+
+    let sinal="OBSERVAR", cls="hold";
+    if(distancia >= 50){ sinal="ZONA DE COMPRA"; cls="buy"; }
+    if(distancia <= 20){ sinal="ZONA DE VENDA"; cls="sell"; }
+
+    if(g1) g1.destroy();
+    if(g2) g2.destroy();
+
+    g1 = new Chart(chartHist,{
+      type:"line",
+      data:{
+        labels: hPrices.map((_,i)=>i),
+        datasets:[{
+          label:"Histórico selecionado",
+          data:hPrices,
+          borderWidth:1,
+          tension:0.25
+        }]
+      }
+    });
+
+    g2 = new Chart(chartNow,{
+      type:"line",
+      data:{
+        labels: nPrices.map((_,i)=>i),
+        datasets:[{
+          label:"Últimos 90 dias",
+          data:nPrices,
+          borderWidth:1,
+          tension:0.25
+        }]
+      }
+    });
+
+    res.innerHTML=`
+      💰 <b>Preço atual</b>: $${precoAtual.toFixed(2)}<br>
+      📉 <b>Distância do topo</b>: ${distancia.toFixed(2)}%<br>
+      🚦 <span class="${cls}">${sinal}</span>
+    `;
+
+  }catch(e){
+    err.innerText = e;
+  }
+}
+</script>
+
+</body>
+</html>
